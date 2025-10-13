@@ -1,16 +1,52 @@
+from flask import Flask, request, render_template, send_file, jsonify
+from processing.image_processor import process_image
+import threading
+import io
+import zipfile
 import os
 import tempfile
-import zipfile
-from pathlib import Path
-from flask import Flask, request, render_template, send_file
-from processing.image_processor import process_image
 
 app = Flask(__name__)
 
-ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.webp'}
+# Global variable to store progress
+progress = {"current": 0, "total": 1, "done": True, "error": None}
 
-def allowed_file(filename: str) -> bool:
-    return Path(filename).suffix.lower() in ALLOWED_EXTENSIONS
+def process_zip(zip_file_stream):
+    progress["current"] = 0
+    progress["done"] = False
+    progress["error"] = None
+
+    try:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Save uploaded zip to a temp file
+            zip_path = os.path.join(temp_dir, "upload.zip")
+            with open(zip_path, "wb") as f:
+                f.write(zip_file_stream.read())
+
+            # Extract
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(temp_dir)
+                images = [os.path.join(temp_dir, fname) for fname in zip_ref.namelist() if fname.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.webp'))]
+            
+            progress["total"] = len(images)
+            output_dir = os.path.join(temp_dir, "output")
+            os.makedirs(output_dir, exist_ok=True)
+
+            for idx, img_path in enumerate(images):
+                try:
+                    with open(img_path, "rb") as f:
+                        processed_img = process_image(f)
+                        out_path = os.path.join(output_dir, os.path.basename(img_path))
+                        with open(out_path, "wb") as out_f:
+                            out_f.write(processed_img.read())
+                except Exception as e:
+                    print(f"Error processing {img_path}: {e}")
+                progress["current"] = idx + 1
+
+        progress["done"] = True
+    except Exception as e:
+        progress["error"] = str(e)
+        progress["done"] = True
 
 @app.route('/')
 def home():
@@ -20,56 +56,27 @@ def home():
 def process_folder():
     if 'file' not in request.files:
         return "No file uploaded", 400
+    zip_file = request.files['file']
+    if zip_file.filename == '':
+        return "No file selected", 400
 
-    file = request.files['file']
-    if not file.filename.lower().endswith('.zip'):
-        return "Please upload a ZIP file containing your images.", 400
+    # Start background processing thread
+    threading.Thread(target=process_zip, args=(zip_file.stream,)).start()
+    return jsonify({"message": "Batch processing started."}), 202
 
-    # Use a temporary workspace for safe processing
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmpdir = Path(tmpdir)
-        input_dir = tmpdir / "input"
-        output_dir = tmpdir / "output"
-        input_dir.mkdir(parents=True, exist_ok=True)
-        output_dir.mkdir(parents=True, exist_ok=True)
-
-        # Save and extract the uploaded ZIP
-        zip_path = tmpdir / "uploaded.zip"
-        file.save(zip_path)
-        try:
-            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                zip_ref.extractall(input_dir)
-        except zipfile.BadZipFile:
-            return "Invalid ZIP file.", 400
-
-        # Process images recursively
-        for img_path in input_dir.rglob('*'):
-            if img_path.is_file() and allowed_file(img_path.name):
-                rel = img_path.relative_to(input_dir)
-                dest = (output_dir / rel).with_suffix('.jpg')
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                
-                # Pass the file path as a string, not a file object
-                try:
-                    processed_stream = process_image(str(img_path), str(dest))
-                    if processed_stream is None:
-                        print(f"skipping invalid file: {img_path.name}")
-                        continue
-                    with open(dest, 'wb') as out:
-                        out.write(processed_stream.read())
-                except Exception as e:
-                    print(f"Error processing {img_path.name}: {e}")
-                    continue
-
-        # Package results into a ZIP
-        output_zip_path = tmpdir / "enhanced_images.zip"
-        with zipfile.ZipFile(output_zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            for file_path in output_dir.rglob('*'):
-                if file_path.is_file():
-                    zipf.write(file_path, file_path.relative_to(output_dir))
-
-        return send_file(output_zip_path, as_attachment=True, download_name="enhanced_images.zip")
+@app.route('/progress')
+def get_progress():
+    if progress["total"] == 0:
+        percent = 0
+    else:
+        percent = int((progress["current"] / progress["total"]) * 100)
+    return jsonify({
+        "percent": percent,
+        "current": progress["current"],
+        "total": progress["total"],
+        "done": progress["done"],
+        "error": progress["error"]
+    })
 
 if __name__ == '__main__':
-    # Bind to 0.0.0.0 for broader compatibility in containers/VMs; change as needed.
-    app.run(host='0.0.0.0', port=3000, debug=True)
+    app.run(debug=True)
