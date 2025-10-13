@@ -2,17 +2,21 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Car Image Enhancer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Batch Car Image Enhancer</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
   <div class="container">
-    <h1>🚗 Car Image Enhancer</h1>
-    <p>Upload a car image and get an enhanced version instantly.</p>
-    <form action="/process" method="post" enctype="multipart/form-data">
-      <input type="file" name="file" accept="image/*" required>
-      <button type="submit">Enhance Image</button>
+    <h1>🚗 Image Resize (Batch)</h1>
+    <p>Upload a ZIP containing your images. You'll receive a ZIP of enhanced results.</p>
+
+    <form action="/process_folder" method="post" enctype="multipart/form-data">
+      <input type="file" name="file" accept=".zip" required>
+      <button type="submit">Process ZIP</button>
     </form>
+
+    <p class="note">Supported images: .jpg .jpeg .png .bmp .tiff .webp</p>
   </div>
 </body>
 </html>
