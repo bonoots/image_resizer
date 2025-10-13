@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Car Image Enhancer</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="container">
+    <h1>🚗 Car Image Enhancer</h1>
+    <p>Upload a car image and get an enhanced version instantly.</p>
+    <form action="/process" method="post" enctype="multipart/form-data">
+      <input type="file" name="file" accept="image/*" required>
+      <button type="submit">Enhance Image</button>
+    </form>
+  </div>
+</body>
+</html>
