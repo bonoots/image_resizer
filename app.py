@@ -60,8 +60,10 @@ def process_folder():
     if zip_file.filename == '':
         return "No file selected", 400
 
-    # Start background processing thread
-    threading.Thread(target=process_zip, args=(zip_file.stream,)).start()
+    # ✅ Fix: read bytes before thread
+    file_bytes = zip_file.read()
+
+    threading.Thread(target=process_zip, args=(io.BytesIO(file_bytes),)).start()
     return jsonify({"message": "Batch processing started."}), 202
 
 @app.route('/progress')
