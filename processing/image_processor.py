@@ -1,4 +1,5 @@
 import io
+from io import BytesIO
 from typing import BinaryIO
 import cv2
 import numpy as np
