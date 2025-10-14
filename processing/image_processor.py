@@ -1,6 +1,6 @@
 import io
 from io import BytesIO
-from typing import BinaryIO
+from typing import BinaryIO, Union, Optional
 import cv2
 import numpy as np
 from PIL import Image, ImageEnhance, ImageFilter
@@ -173,10 +173,23 @@ def add_all_padding_blur(img: Image.Image, side_padding_ratio=0.10, top_bottom_p
     expanded_rgb = cv2.cvtColor(expanded, cv2.COLOR_BGR2RGB)
     return Image.fromarray(expanded_rgb)
 
-def process_image(file_path: str, output_path: str):
+def process_image(file_input: Union[str, BinaryIO], output_path: Optional[str] = None) -> BytesIO:
+    """
+    Process an image and return a JPEG as an in-memory BytesIO stream.
+    - file_input: either a filesystem path (str) or a binary file-like object.
+    - output_path: if provided, the processed bytes are also written to this path.
+    """
     try:
-        img = Image.open(file_path).convert("RGB")
-        img = autocrop_black_borders(img)  # <--- NEW: remove black borders before processing
+        # Open image from path or stream
+        if isinstance(file_input, str):
+            img = Image.open(file_input).convert("RGB")
+        elif hasattr(file_input, "read"):
+            img = Image.open(file_input).convert("RGB")
+        else:
+            raise TypeError("file_input must be a path string or a binary file-like object")
+
+        # Pipeline
+        img = autocrop_black_borders(img)      # remove black borders before processing
         img = enhance_image(img)
 
         # Step 1: Expand to 16:9 ratio
@@ -185,15 +198,23 @@ def process_image(file_path: str, output_path: str):
         # Step 2: Resize to target dimensions
         img = img.resize((TARGET_WIDTH, TARGET_HEIGHT), Image.LANCZOS)
 
-        # Step 3: Add all padding at once with seamless corner blending and smooth content transition
+        # Step 3: Add padding with seamless blending and smooth transition
         img = add_all_padding_blur(img, side_padding_ratio=0.10, top_bottom_padding_ratio=0.20, blend_px=40)
 
+        # Output to memory
         output_stream = io.BytesIO()
         img.save(output_stream, format="JPEG", quality=95)
         output_stream.seek(0)
+
+        # Optionally write to disk
+        if output_path:
+            with open(output_path, "wb") as f_out:
+                f_out.write(output_stream.getvalue())
+            output_stream.seek(0)  # reset after writing
+
         return output_stream
 
     except UnidentifiedImageError:
-        raise ValueError(f"Cannot identify image file: {file_path}")
+        raise ValueError(f"Cannot identify image file: {file_input}")
     except Exception as e:
         raise Exception(f"Error processing image: {str(e)}")
