@@ -3,8 +3,44 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Batch Car Image Enhancer</title>
+  <title>🚗 Image Resize (Batch)</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #fafafa;
+      text-align: center;
+      margin-top: 50px;
+    }
+    .container {
+      display: inline-block;
+      padding: 20px;
+      border-radius: 10px;
+      background: white;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+    progress {
+      width: 300px;
+      height: 20px;
+    }
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    a.download-link {
+      display: inline-block;
+      margin-top: 10px;
+      text-decoration: none;
+      background: #007bff;
+      color: white;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+    a.download-link:hover {
+      background: #0056b3;
+    }
+  </style>
 </head>
 <body>
   <div class="container">
@@ -17,59 +53,79 @@
     </form>
 
     <br>
-    <progress id="progressBar" value="0" max="100" style="width:300px; display:none;"></progress>
-    <span id="progressText"></span>
-    <div id="errorMsg" style="color:red;"></div>
+    <progress id="progressBar" value="0" max="100" style="display:none;"></progress>
+    <div id="progressText"></div>
+    <div id="errorMsg" style="color:red; margin-top:10px;"></div>
+    <div id="downloadLink"></div>
 
-    <p class="note">Supported images: .jpg .jpeg .png .bmp .tiff .webp</p>
+    <p class="note" style="margin-top:20px; color:#666;">Supported: .jpg .jpeg .png .bmp .tiff .webp</p>
   </div>
+
   <script>
     const form = document.getElementById('batchForm');
     const progressBar = document.getElementById('progressBar');
     const progressText = document.getElementById('progressText');
     const errorMsg = document.getElementById('errorMsg');
+    const downloadLink = document.getElementById('downloadLink');
+    const submitBtn = form.querySelector('button');
 
     form.onsubmit = function(e) {
       e.preventDefault();
-      const filesInput = form.querySelector('input[type="file"]');
-      if (!filesInput.files.length) {
+      const fileInput = form.querySelector('input[type="file"]');
+      if (!fileInput.files.length) {
         alert('Please select a ZIP file.');
-        return false;
+        return;
       }
+
+      // Reset UI
       progressBar.value = 0;
-      progressBar.style.display = 'inline-block';
-      errorMsg.innerText = '';
+      progressBar.style.display = 'block';
       progressText.innerText = 'Starting...';
+      errorMsg.innerText = '';
+      downloadLink.innerHTML = '';
+      submitBtn.disabled = true;
 
       const formData = new FormData();
-      formData.append('file', filesInput.files[0]);
+      formData.append('file', fileInput.files[0]);
 
-      fetch('/process_folder', {method: 'POST', body: formData})
+      fetch('/process_folder', { method: 'POST', body: formData })
         .then(res => {
-          if(!res.ok) throw new Error("Server error");
+          if (!res.ok) throw new Error("Server error");
           pollProgress();
         })
         .catch(err => {
           errorMsg.innerText = 'Batch start failed: ' + err.message;
+          submitBtn.disabled = false;
         });
     };
 
     function pollProgress() {
-      fetch('/progress').then(res => res.json()).then(data => {
-        progressBar.value = data.percent;
-        progressText.innerText = `${data.current}/${data.total} (${data.percent}%)`;
-        if (data.error) {
-          errorMsg.innerText = data.error;
-          return;
-        }
-        if (!data.done) {
-          setTimeout(pollProgress, 500);
-        } else {
-          progressText.innerText += " - Done!";
-        }
-      }).catch(() => {
-        errorMsg.innerText = "Could not contact server.";
-      });
+      fetch('/progress')
+        .then(res => res.json())
+        .then(data => {
+          progressBar.value = data.percent;
+          progressText.innerText = `${data.current}/${data.total} (${data.percent}%)`;
+
+          if (data.error) {
+            errorMsg.innerText = '❌ Error: ' + data.error;
+            submitBtn.disabled = false;
+            return;
+          }
+
+          if (!data.done) {
+            setTimeout(pollProgress, 500);
+          } else {
+            progressText.innerText += ' - ✅ Done!';
+            submitBtn.disabled = false;
+
+            // Auto show download link
+            downloadLink.innerHTML = '<a class="download-link" href="/download">⬇️ Download Processed ZIP</a>';
+          }
+        })
+        .catch(() => {
+          errorMsg.innerText = "Could not contact server.";
+          submitBtn.disabled = false;
+        });
     }
   </script>
 </body>
